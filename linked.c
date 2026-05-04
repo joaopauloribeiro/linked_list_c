@@ -16,14 +16,16 @@ static AllocatedNodes allocatedNodes;
 
 /* --- Registry: tracks all heap-allocated nodes as a safety net --- */
 
-void registerNode(struct node* node)
+/* Returns 0 on success, -1 if the registry is full. */
+int registerNode(struct node* node)
 {
     if (allocatedNodes.count >= MAX_NODES) {
         fprintf(stderr, "registerNode: registry full, cannot track node\n");
-        return;
+        return -1;
     }
     allocatedNodes.nodes[allocatedNodes.count] = node;
     allocatedNodes.count++;
+    return 0;
 }
 
 /* Search the registry for this specific pointer, free it, and compact the array. */
@@ -86,17 +88,25 @@ struct node* createNode(char value)
     }
     newNode->value = value;
     newNode->next = NULL;
-    registerNode(newNode);
+    if (registerNode(newNode) != 0) {
+        free(newNode);
+        return NULL;
+    }
     return newNode;
 }
 
 /*
  * Walk the list to find the actual last node (and its predecessor),
  * then unlink and free it via the registry.
+ * Takes a double pointer so it can null out the caller's head when
+ * the only remaining node is freed.
  */
-void destructLastNode(struct node* listStart)
+void destructLastNode(struct node** listStart)
 {
-    struct node* seekNode = listStart;
+    if (listStart == NULL || *listStart == NULL)
+        return;
+
+    struct node* seekNode = *listStart;
     struct node* prev = NULL;
 
     while (seekNode->next != NULL) {
@@ -106,6 +116,8 @@ void destructLastNode(struct node* listStart)
 
     if (prev != NULL)
         prev->next = NULL;
+    else
+        *listStart = NULL;
 
     unregisterNode(seekNode);
 }
@@ -151,25 +163,30 @@ int main(void)
     printf("Dynamic Linked List functions\n");
 
     dynamicNode = createNode('1');
+    if (dynamicNode == NULL) return 1;
     printf("dynamicList at %p\n", (void*)dynamicNode);
     printf("dynamicNode.value: %c\n", dynamicNode->value);
 
-    dynamicNode->next = createNode('2');
+    temporaryNode = createNode('2');
+    if (temporaryNode == NULL) return 1;
+    dynamicNode->next = temporaryNode;
     temporaryNode = getLastNode(dynamicNode);
     printf("temporaryNode at %p\n", (void*)temporaryNode);
     printf("lastNode.value: %c\n", temporaryNode->value);
 
     temporaryNode->next = createNode('3');
+    if (temporaryNode->next == NULL) return 1;
     temporaryNode = getLastNode(dynamicNode);
     printf("temporaryNode at %p\n", (void*)temporaryNode);
     printf("lastNode.value: %c\n", temporaryNode->value);
 
     temporaryNode->next = createNode('4');
+    if (temporaryNode->next == NULL) return 1;
     temporaryNode = getLastNode(dynamicNode);
     printf("temporaryNode at %p\n", (void*)temporaryNode);
     printf("lastNode.value: %c\n", temporaryNode->value);
 
-    destructLastNode(dynamicNode);
+    destructLastNode(&dynamicNode);
     temporaryNode = getLastNode(dynamicNode);
     printf("temporaryNode at %p\n", (void*)temporaryNode);
     printf("lastNode.value: %c\n", temporaryNode->value);
